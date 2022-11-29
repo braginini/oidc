@@ -48,6 +48,18 @@ func NewUserStore() UserStore {
 				PhoneVerified:     false,
 				PreferredLanguage: language.German,
 			},
+			"zitadel-user-id": {
+				ID:                "zitadel-user-id",
+				Username:          "netbird",
+				Password:          "netbird",
+				FirstName:         "NetBird",
+				LastName:          "User",
+				Email:             "netbird-user@netbird.io",
+				EmailVerified:     true,
+				Phone:             "",
+				PhoneVerified:     false,
+				PreferredLanguage: language.English,
+			},
 		},
 	}
 }

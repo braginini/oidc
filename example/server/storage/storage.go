@@ -4,6 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"fmt"
 	"math/big"
 	"sync"
@@ -247,6 +251,7 @@ func (s *Storage) TerminateSession(ctx context.Context, userID string, clientID 
 		if token.ApplicationID == clientID && token.Subject == userID {
 			delete(s.tokens, token.ID)
 			delete(s.refreshTokens, token.RefreshTokenID)
+			return nil
 		}
 	}
 	return nil
@@ -254,11 +259,11 @@ func (s *Storage) TerminateSession(ctx context.Context, userID string, clientID 
 
 // RevokeToken implements the op.Storage interface
 // it will be called after parsing and validation of the token revocation request
-func (s *Storage) RevokeToken(ctx context.Context, tokenIDOrToken string, userID string, clientID string) *oidc.Error {
+func (s *Storage) RevokeToken(ctx context.Context, token string, userID string, clientID string) *oidc.Error {
 	// a single token was requested to be removed
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	accessToken, ok := s.tokens[tokenIDOrToken] // tokenID
+	accessToken, ok := s.tokens[token]
 	if ok {
 		if accessToken.ApplicationID != clientID {
 			return oidc.ErrInvalidClient().WithDescription("token was not issued for this client")
@@ -268,7 +273,7 @@ func (s *Storage) RevokeToken(ctx context.Context, tokenIDOrToken string, userID
 		delete(s.tokens, accessToken.ID)
 		return nil
 	}
-	refreshToken, ok := s.refreshTokens[tokenIDOrToken] // token
+	refreshToken, ok := s.refreshTokens[token]
 	if !ok {
 		// if the token is neither an access nor a refresh token, just ignore it, the expected behaviour of
 		// being not valid (anymore) is achieved
@@ -304,10 +309,40 @@ func (s *Storage) GetSigningKey(ctx context.Context, keyCh chan<- jose.SigningKe
 		},
 	}
 }
+func testCert(privateKey *rsa.PrivateKey) (*x509.Certificate, error) {
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			Organization: []string{"CAOS"},
+		},
+		NotBefore: time.Now(),
+		NotAfter:  time.Now().Add(time.Hour * 24 * 180),
+	}
+	parent := template
+	certBytes, err := x509.CreateCertificate(rand.Reader, template, parent, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		return nil, err
+	}
+	certificate, err := x509.ParseCertificate(certBytes)
+	if err != nil {
+		return nil, err
+	}
+	return certificate, nil
+}
 
 // GetKeySet implements the op.Storage interface
 // it will be called to get the current (public) keys, among others for the keys_endpoint or for validating access_tokens on the userinfo_endpoint, ...
 func (s *Storage) GetKeySet(ctx context.Context) (*jose.JSONWebKeySet, error) {
+	cert, err := testCert(s.signingKey.Key)
+	if err != nil {
+		return nil, err
+	}
+	sha := sha256.New()
+	sha.Write(cert.Raw)
+	s1 := sha.Sum(nil)
+	sha11 := sha1.New()
+	sha11.Write(cert.Raw)
+	s2 := sha11.Sum(nil)
 	// as mentioned above, this example only has a single signing key without key rotation,
 	// so it will directly use its public key
 	//
@@ -316,10 +351,13 @@ func (s *Storage) GetKeySet(ctx context.Context) (*jose.JSONWebKeySet, error) {
 	return &jose.JSONWebKeySet{
 		Keys: []jose.JSONWebKey{
 			{
-				KeyID:     s.signingKey.ID,
-				Algorithm: s.signingKey.Algorithm,
-				Use:       oidc.KeyUseSignature,
-				Key:       &s.signingKey.Key.PublicKey,
+				Certificates:                []*x509.Certificate{cert},
+				CertificateThumbprintSHA1:   s2,
+				CertificateThumbprintSHA256: s1,
+				KeyID:                       s.signingKey.ID,
+				Algorithm:                   s.signingKey.Algorithm,
+				Use:                         oidc.KeyUseSignature,
+				Key:                         &s.signingKey.Key.PublicKey,
 			},
 		},
 	}, nil
@@ -508,7 +546,6 @@ func (s *Storage) renewRefreshToken(currentRefreshToken string) (string, string,
 	// creates a new refresh token based on the current one
 	token := uuid.NewString()
 	refreshToken.Token = token
-	refreshToken.ID = token
 	s.refreshTokens[token] = refreshToken
 	return token, refreshToken.ID, nil
 }

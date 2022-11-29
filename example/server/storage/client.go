@@ -113,14 +113,14 @@ func (c *Client) IsScopeAllowed(scope string) bool {
 
 // IDTokenUserinfoClaimsAssertion allows specifying if claims of scope profile, email, phone and address are asserted into the id_token
 // even if an access token if issued which violates the OIDC Core spec
-//(5.4. Requesting Claims using Scope Values: https://openid.net/specs/openid-connect-core-1_0.html#ScopeClaims)
+// (5.4. Requesting Claims using Scope Values: https://openid.net/specs/openid-connect-core-1_0.html#ScopeClaims)
 // some clients though require that e.g. email is always in the id_token when requested even if an access_token is issued
 func (c *Client) IDTokenUserinfoClaimsAssertion() bool {
 	return c.idTokenUserinfoClaimsAssertion
 }
 
 // ClockSkew enables clients to instruct the OP to apply a clock skew on the various times and expirations
-//(subtract from issued_at, add to expiration, ...)
+// (subtract from issued_at, add to expiration, ...)
 func (c *Client) ClockSkew() time.Duration {
 	return c.clockSkew
 }
@@ -141,7 +141,7 @@ func RegisterClients(registerClients ...*Client) {
 // user-defined redirectURIs may include:
 // - http://localhost without port specification (e.g. http://localhost/auth/callback)
 // - custom protocol (e.g. custom://auth/callback)
-//(the examples will be used as default, if none is provided)
+// (the examples will be used as default, if none is provided)
 func NativeClient(id string, redirectURIs ...string) *Client {
 	if len(redirectURIs) == 0 {
 		redirectURIs = []string{
@@ -168,11 +168,11 @@ func NativeClient(id string, redirectURIs ...string) *Client {
 // WebClient will create a client of type web, which will always use Basic Auth and allow the use of refresh tokens
 // user-defined redirectURIs may include:
 // - http://localhost with port specification (e.g. http://localhost:9999/auth/callback)
-//(the example will be used as default, if none is provided)
+// (the example will be used as default, if none is provided)
 func WebClient(id, secret string, redirectURIs ...string) *Client {
 	if len(redirectURIs) == 0 {
 		redirectURIs = []string{
-			"http://localhost:9999/auth/callback",
+			"http://localhost:3000/#callback",
 		}
 	}
 	return &Client{
@@ -180,11 +180,11 @@ func WebClient(id, secret string, redirectURIs ...string) *Client {
 		secret:                         secret,
 		redirectURIs:                   redirectURIs,
 		applicationType:                op.ApplicationTypeWeb,
-		authMethod:                     oidc.AuthMethodBasic,
+		authMethod:                     oidc.AuthMethodNone,
 		loginURL:                       defaultLoginURL,
 		responseTypes:                  []oidc.ResponseType{oidc.ResponseTypeCode},
 		grantTypes:                     []oidc.GrantType{oidc.GrantTypeCode, oidc.GrantTypeRefreshToken},
-		accessTokenType:                0,
+		accessTokenType:                1,
 		devMode:                        false,
 		idTokenUserinfoClaimsAssertion: false,
 		clockSkew:                      0,
